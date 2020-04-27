@@ -1,6 +1,6 @@
 use crate::broker::Event;
 use anyhow::{Context, Result};
-use futures::{StreamExt, TryStreamExt};
+use futures::StreamExt;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -22,11 +22,21 @@ pub async fn handle_connection(
     // subscribe to broker
     broker_tx.send(Event::NewPeer { addr, tx: outgoing })?;
 
-    while let Some(msg) = incoming.try_next().await? {
-        log::info!("Received msg: {:?}", msg);
+    while let Some(msg) = incoming.next().await {
+        let msg = match msg {
+            Ok(msg) => msg,
+            Err(e) => {
+                log::info!("Connection closed: {}", e);
+                broker_tx.send(Event::Disconnect { addr })?;
+                break;
+            }
+        };
 
+        log::info!("Received msg: {:?}", msg);
         broker_tx.send(Event::WireMessage { addr, msg })?;
     }
+
+    broker_tx.send(Event::Disconnect { addr })?;
 
     log::info!("{} disconnected", &addr);
 

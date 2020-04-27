@@ -49,6 +49,8 @@ pub async fn broker_loop(mut rx: UnboundedReceiver<Event>) -> Result<()> {
                 }
             }
         }
+
+        log::info!("Peers connected: {}", peer_map.len());
     }
 
     Ok(())
