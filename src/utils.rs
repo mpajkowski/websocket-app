@@ -47,36 +47,45 @@ pub fn create_json_snapshot(old_state: &mut Value, new_state: &Value) {
     }
 
     for (channel, value) in new_state.iter() {
-        if let Some(old_value) = old_state.get_mut(&*channel) {
-            // iterate through keys and check if values should be removed/updated
-
-            // new value is an object
-            if let Some(new_dict) = value.as_object() {
-                // old value is an object
-                if let Some(old_dict) = old_value.as_object_mut() {
-                    for (key, new_val) in new_dict.iter() {
-                        match old_dict.get_mut(&*key) {
-                            // remove equal values in order to reduce bandwidth
-                            Some(old_v) if old_v == new_val => {
-                                old_dict.remove(&*key);
-                            }
-                            // update/append value under given key if changed/occurred
-                            Some(_) | None => {
-                                old_dict.insert(key.clone(), new_val.clone());
-                            }
-                        }
-                    }
-                } else {
-                    // upgrade new value to dict
-                    *old_value = Value::Object(new_dict.clone());
-                }
-            } else {
-                // upgrade to new value to whatever
-                *old_value = value.clone();
+        // iterate through keys and check if values should be removed/updated
+        let old_value = match old_state.get_mut(&*channel) {
+            Some(v) => v,
+            None => {
+                // insert new channel
+                old_state.insert(channel.clone(), value.clone());
+                continue;
             }
-        } else {
-            // insert new channel
-            old_state.insert(channel.clone(), value.clone());
+        };
+
+        let new_dict = match value.as_object() {
+            Some(v) => v,
+            None => {
+                // replace old value with new value
+                *old_value = value.clone();
+                continue;
+            }
+        };
+
+        let old_dict = match old_value.as_object_mut() {
+            Some(v) => v,
+            None => {
+                // upgrade new value to dict
+                *old_value = Value::Object(new_dict.clone());
+                continue;
+            }
+        };
+
+        for (key, new_val) in new_dict.iter() {
+            match old_dict.get_mut(&*key) {
+                // remove equal values in order to reduce bandwidth
+                Some(old_v) if old_v == new_val => {
+                    old_dict.remove(&*key);
+                }
+                // update/append value under given key if changed/occurred
+                Some(_) | None => {
+                    old_dict.insert(key.clone(), new_val.clone());
+                }
+            }
         }
     }
 }
@@ -86,7 +95,6 @@ mod test {
     use super::*;
     use serde_json::json;
 
-    // TODO: assertions
     #[test]
     fn test_patch() {
         let mut json1 = json!({"a": "xyz"});
