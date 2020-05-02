@@ -1,7 +1,12 @@
 use anyhow::Result;
+use serde_json::{json, Value};
 use std::future::Future;
 use tokio::task::JoinHandle;
 
+/// Spawns future in background and logs errors received from running tasks
+///
+/// # Arguments:
+/// * `fut` - a future with output `Result<()>`, threadsafe and borrowed forever
 pub fn spawn_and_log_err<F>(fut: F) -> JoinHandle<()>
 where
     F: Future<Output = Result<()>> + Send + Sync + 'static,
@@ -11,4 +16,107 @@ where
             log::error!("an error occured: {}", e);
         }
     })
+}
+
+/// Creates incremental diff of two json documents
+///
+/// # Arguments:
+/// * `old_state` - old document (will be modified inplace)
+/// * `new_state` - new document
+pub fn create_json_snapshot(old_state: &mut Value, new_state: &Value) {
+    // equal: just return
+    if old_state == new_state {
+        std::mem::replace(old_state, json!({}));
+        return;
+    }
+
+    let old_state = old_state.as_object_mut().unwrap();
+
+    let new_state = new_state.as_object().unwrap();
+
+    // remove keys
+    let mut to_remove = vec![];
+    for key in old_state.keys() {
+        if !new_state.contains_key(key) {
+            to_remove.push(key.clone());
+        }
+    }
+
+    for key in to_remove {
+        old_state.remove(&key);
+    }
+
+    for (channel, value) in new_state.iter() {
+        if let Some(old_value) = old_state.get_mut(&*channel) {
+            // iterate through keys and check if values should be removed/updated
+
+            // new value is an object
+            if let Some(new_dict) = value.as_object() {
+                // old value is an object
+                if let Some(old_dict) = old_value.as_object_mut() {
+                    for (key, new_val) in new_dict.iter() {
+                        match old_dict.get_mut(&*key) {
+                            // remove equal values in order to reduce bandwidth
+                            Some(old_v) if old_v == new_val => {
+                                old_dict.remove(&*key);
+                            }
+                            // update/append value under given key if changed/occurred
+                            Some(_) | None => {
+                                old_dict.insert(key.clone(), new_val.clone());
+                            }
+                        }
+                    }
+                } else {
+                    // upgrade new value to dict
+                    *old_value = Value::Object(new_dict.clone());
+                }
+            } else {
+                // upgrade to new value to whatever
+                *old_value = value.clone();
+            }
+        } else {
+            // insert new channel
+            old_state.insert(channel.clone(), value.clone());
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use serde_json::json;
+
+    // TODO: assertions
+    #[test]
+    fn test_patch() {
+        let mut json1 = json!({"a": "xyz"});
+        let json2 = json1.clone();
+        create_json_snapshot(&mut json1, &json2);
+        assert_eq!(json1, json!({}));
+
+        let mut json1 = json!({"channel": {"a": "xyz"}});
+        let json2 = json!({"channel": {"a": "abc"}});
+        create_json_snapshot(&mut json1, &json2);
+        assert_eq!(json1, json2);
+
+        let mut json1 = json!({"channel": {"a": "xyz", "b": "notchangedwillberemoved"}});
+        let json2 = json!({"channel": {"a": "abc", "b": "notchangedwillberemoved"}});
+        create_json_snapshot(&mut json1, &json2);
+        assert_eq!(json1, json!({"channel": {"a": "abc"}}));
+
+        let mut json1 = json!({"channel": "usedtobeastring"});
+        let json2 = json!({"channel": {"a": "abc", "b": "nowiamadict"}});
+        create_json_snapshot(&mut json1, &json2);
+        assert_eq!(json1, json2);
+
+        let mut json1 = json!({"channel": {"a": "iusedtobeadict"}});
+        let json2 = json!({"channel": "nowiamastring"});
+        create_json_snapshot(&mut json1, &json2);
+        assert_eq!(json1, json2);
+
+        let mut json1 = json!({"channel_a": {"a": "xyz"}});
+        let json2 = json!({"channel_b": {"a": "xyz"}});
+        create_json_snapshot(&mut json1, &json2);
+        assert_eq!(json1, json2);
+    }
 }

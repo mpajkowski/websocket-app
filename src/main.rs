@@ -1,13 +1,16 @@
-#![deny(unused_imports, unused_must_use)]
+//#![deny(unused_imports, unused_must_use)]
 
 use std::env;
 
 use anyhow::Result;
 use tokio::net::TcpListener;
 
-pub mod accept;
+pub mod app;
 pub mod broker;
+pub mod channel;
 pub mod client;
+pub mod frame;
+pub mod state;
 pub mod utils;
 
 #[tokio::main]
@@ -22,7 +25,7 @@ async fn main() -> Result<()> {
     let listener = TcpListener::bind(&addr).await?;
     log::info!("Listening on: {}", addr);
 
-    crate::accept::accept_loop(listener).await?;
+    app::event_loop(listener).await?;
 
     Ok(())
 }
