@@ -6,7 +6,7 @@ use sqlx::SqlitePool;
 use std::env;
 use std::sync::Arc;
 use tokio::net::TcpListener;
-use tokio::sync::{mpsc::unbounded_channel, Mutex};
+use tokio::sync::mpsc::unbounded_channel;
 
 pub async fn event_loop(mut listener: TcpListener) -> Result<()> {
     let db_string = env::var("SQLITE_PATH").map_err(|_| anyhow!("Missing path to sqlite db"))?;
@@ -15,7 +15,7 @@ pub async fn event_loop(mut listener: TcpListener) -> Result<()> {
     let state = State::new(pool);
 
     let (broker_tx, broker_rx) = unbounded_channel();
-    let mut broker = Broker::new(broker_rx, Arc::new(Mutex::new(state)));
+    let mut broker = Broker::new(broker_rx, state);
 
     broker.add_channel(Arc::new(Reward {}));
     broker.add_channel(Arc::new(ThirteenChan {}));
