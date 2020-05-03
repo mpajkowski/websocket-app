@@ -9,7 +9,7 @@ use tokio::task::JoinHandle;
 /// * `fut` - a future with output `Result<()>`, threadsafe and borrowed forever
 pub fn spawn_and_log_err<F>(fut: F) -> JoinHandle<()>
 where
-    F: Future<Output = Result<()>> + Send + Sync + 'static,
+    F: Future<Output = Result<()>> + Send +  'static,
 {
     tokio::spawn(async move {
         if let Err(e) = fut.await {
@@ -31,16 +31,19 @@ pub fn create_json_snapshot(old_state: &mut Value, new_state: &Value) {
     }
 
     let old_state = old_state.as_object_mut().unwrap();
-
     let new_state = new_state.as_object().unwrap();
 
     // remove keys
-    let mut to_remove = vec![];
-    for key in old_state.keys() {
-        if !new_state.contains_key(key) {
-            to_remove.push(key.clone());
-        }
-    }
+    let to_remove = old_state
+        .keys()
+        .filter_map(|key| {
+            if !new_state.contains_key(key.as_str()) {
+                Some(key.to_string())
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
 
     for key in to_remove {
         old_state.remove(&key);

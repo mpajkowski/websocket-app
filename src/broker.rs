@@ -10,7 +10,7 @@ use futures::stream::StreamExt;
 use std::sync::Arc;
 use std::{collections::HashMap, net::SocketAddr};
 use tokio::sync::mpsc::UnboundedReceiver;
-use tokio::sync::RwLock;
+use tokio::sync::Mutex;
 
 /// Events occuring on client's websocket
 #[derive(Debug)]
@@ -82,7 +82,7 @@ type ChannelMap = HashMap<String, Arc<dyn Channel>>;
 /// Event dispatcher
 pub struct Broker {
     rx: UnboundedReceiver<Event>,
-    state: Arc<RwLock<State>>,
+    state: Arc<Mutex<State>>,
     client_map: ClientMap,
     channel_map: ChannelMap,
 }
@@ -92,8 +92,8 @@ impl Broker {
     ///
     /// # Arguments:
     /// * `rx` - reading half of event mpsc channel
-    /// * `state` - a pointer to application state, protected by `RwLock`
-    pub fn new(rx: UnboundedReceiver<Event>, state: Arc<RwLock<State>>) -> Broker {
+    /// * `state` - a pointer to application state, protected by `Mutex`
+    pub fn new(rx: UnboundedReceiver<Event>, state: Arc<Mutex<State>>) -> Broker {
         Broker {
             rx,
             state,
@@ -257,13 +257,15 @@ impl Broker {
         let client = Self::get_client(&mut self.client_map, addr);
 
         let payload = {
-            let state = self.state.read().await;
+            let state = self.state.lock().await;
+            let mut payload = BTreeMap::new();
+            for chan in client.channels().iter() {
+                let k = chan.name();
+                let data = chan.extract_data(&state).await.unwrap();
+                payload.insert(k, data);
+            }
 
-            client
-                .channels()
-                .iter()
-                .map(|ch| (ch.name().to_string(), ch.extract_data(&state)))
-                .collect::<BTreeMap<_, _>>()
+            payload
         };
 
         let payload = serde_json::to_value(&payload).unwrap();

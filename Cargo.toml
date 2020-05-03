@@ -19,3 +19,5 @@ env_logger = "0.7"
 log = "0.4"
 dotenv = "0.15"
 lz-string = { git = "https://github.com/adumbidiot/lz-string-rs.git" }
+sqlx = { version = "0.3", default-features = false, features = ["runtime-tokio", "sqlite"] }
+async-trait = "0.1"

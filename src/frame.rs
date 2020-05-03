@@ -99,7 +99,7 @@ impl Frame {
         let cseq = client_frame.cseq;
         let mut data = data.to_string();
 
-        let compressed = data.len() > 100;
+        let compressed = data.len() > 1000;
 
         if compressed {
             data = lz_string::compress_uri(&data).unwrap();

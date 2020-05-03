@@ -1,14 +1,18 @@
 use crate::state::State;
+use anyhow::Result;
 use serde_json::Value;
 use std::{fmt::Debug, hash::Hash};
 
 mod reward;
+mod thirteen_chan;
 
 pub use reward::Reward;
+pub use thirteen_chan::ThirteenChan;
 
+#[async_trait::async_trait]
 pub trait Channel: Send + Sync + Debug {
     fn name(&self) -> &str;
-    fn extract_data(&self, state: &State) -> Value;
+    async fn extract_data(&self, state: &State) -> Result<Value>;
 }
 
 impl Hash for dyn Channel {
